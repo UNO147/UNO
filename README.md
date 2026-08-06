@@ -32,15 +32,15 @@ This is the important part — it's what stops a player from reading someone els
     "hands": {
       "$code": {
         "$uid": {
-          ".read": "auth != null && auth.uid === $uid",
-          ".write": "auth != null"
+          ".read": "auth != null && (auth.uid === $uid || root.child('rooms').child($code).child('hostUid').val() === auth.uid)",
+          ".write": "auth != null && (auth.uid === $uid || root.child('rooms').child($code).child('hostUid').val() === auth.uid)"
         }
       }
     },
     "deck": {
       "$code": {
-        ".read": false,
-        ".write": "auth != null"
+        ".read": "auth != null && root.child('rooms').child($code).child('hostUid').val() === auth.uid",
+        ".write": "auth != null && root.child('rooms').child($code).child('hostUid').val() === auth.uid"
       }
     },
     "actions": {
@@ -62,6 +62,8 @@ This is the important part — it's what stops a player from reading someone els
   }
 }
 ```
+
+**Update Aug 6:** the original rules above blocked real gameplay — `deck` was unreadable by anyone (so draws silently failed) and `hands` was only readable by its owner (so the host couldn't validate/process any *other* player's move). The ruleset above is fixed: the host can now read/write `deck` and any player's `hand`, everyone else is still locked to their own hand only. **Re-paste the rules into Realtime Database → Rules** to pick up the fix.
 
 **Known limitation (read this):** the spec asked for Firebase Cloud Functions as a server-authoritative engine so clients can never cheat. I can't deploy Cloud Functions into your project from here, so this build uses the standard fallback: **the host's browser runs the game engine** (shuffles, deals, validates moves, applies effects) and writes results to the DB. The rules above stop other players from reading each other's `hands/` node or writing directly to `deck/`, which blocks the common cheats — but a player who is *hosting* a room could tamper with their own client to see the deck or force outcomes for that room. For a fully tamper-proof game you'd move `processAction()` (in `index.html`, search for that function) into a Cloud Function later; the client-side logic is written so that porting is mostly copy-paste.
 
