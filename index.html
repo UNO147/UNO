@@ -867,6 +867,7 @@ function leaveRoomCleanup(){
   if(actionsListener) actionsRef.off('child_added', actionsListener);
   if(chatListener) chatRef.off('child_added', chatListener);
   currentRoomCode = null; isHost=false; localRoomState=null; localHand=[];
+  actionsListenerRoomCode = null;
 }
 
 document.getElementById('btn-copy-code').onclick = ()=>{
@@ -919,50 +920,73 @@ document.getElementById('btn-start-game').onclick = async ()=>{
   const order = room.order;
   const startingCards = room.startingCards;
 
-  let deck = buildDeck();
-  const hands = {};
-  order.forEach(pid=> hands[pid] = []);
-  for(let round=0; round<startingCards; round++){
-    order.forEach(pid=>{ hands[pid].push(deck.pop()); });
+  try{
+    let deck = buildDeck();
+    const hands = {};
+    order.forEach(pid=> hands[pid] = []);
+    for(let round=0; round<startingCards; round++){
+      order.forEach(pid=>{ hands[pid].push(deck.pop()); });
+    }
+    // first discard card — must not be wild4 (reshuffle if so)
+    let first = deck.pop();
+    while(first.value==='wild4'){ deck.unshift(first); deck = shuffle(deck); first = deck.pop(); }
+    let currentColor = first.color==='wild' ? COLORS[Math.floor(Math.random()*4)] : first.color;
+
+    // write private hands
+    const updates = {};
+    order.forEach(pid=>{ updates[`hands/${currentRoomCode}/${pid}`] = hands[pid]; });
+    await db.ref().update(updates);
+
+    await db.ref(`deck/${currentRoomCode}`).set(deck);
+
+    await db.ref(`rooms/${currentRoomCode}`).update({
+      status:'playing',
+      order,
+      currentTurnIndex:0,
+      direction:1,
+      currentColor,
+      discardTop: first,
+      discardCount:1,
+      drawCount: deck.length,
+      unoCalled: {},
+      winner: null,
+      lastAction: { type:'gameStart', at: Date.now() }
+    });
+
+    showToast('Game started!');
+  } catch(err){
+    console.error('Game start failed:', err);
+    showToast('Could not start game: ' + err.message, 5000);
   }
-  // first discard card — must not be wild4 (reshuffle if so), can be action card (apply basic effect skip for simplicity? keep official: just flip, if wild choose random color)
-  let first = deck.pop();
-  while(first.value==='wild4'){ deck.unshift(first); deck = shuffle(deck); first = deck.pop(); }
-  let currentColor = first.color==='wild' ? COLORS[Math.floor(Math.random()*4)] : first.color;
-
-  // write private hands
-  const updates = {};
-  order.forEach(pid=>{ updates[`hands/${currentRoomCode}/${pid}`] = hands[pid]; });
-  await db.ref().update(updates);
-
-  await db.ref(`deck/${currentRoomCode}`).set(deck);
-
-  await db.ref(`rooms/${currentRoomCode}`).update({
-    status:'playing',
-    order,
-    currentTurnIndex:0,
-    direction:1,
-    currentColor,
-    discardTop: first,
-    discardCount:1,
-    drawCount: deck.length,
-    unoCalled: {},
-    winner: null,
-    lastAction: { type:'gameStart', at: Date.now() }
-  });
-
-  showToast('Game started!');
 };
 
-/* --- Host listens for player action requests --- */
+/* --- Host listens for player action requests ---
+   Attached ONCE per room (not on every render) to avoid double-processing
+   the same action if it reattaches mid-write. Actions are processed one
+   at a time via actionQueue so overlapping draws/plays can't race. */
+let actionsListenerRoomCode = null;
+let actionQueue = Promise.resolve();
+
 function attachHostActionListener(){
   if(!isHost) return;
-  if(actionsListener) actionsRef.off('child_added', actionsListener);
+  if(actionsListenerRoomCode === currentRoomCode) return; // already attached for this room
+  if(actionsListener && actionsRef) actionsRef.off('child_added', actionsListener);
+  actionsListenerRoomCode = currentRoomCode;
   actionsRef = db.ref(`actions/${currentRoomCode}`);
   actionsListener = actionsRef.on('child_added', snap=>{
     const action = snap.val();
     const key = snap.key;
-    processAction(action).finally(()=> actionsRef.child(key).remove());
+    actionQueue = actionQueue
+      .then(()=> processAction(action))
+      .catch(err=>{
+        console.error('processAction failed:', action, err);
+        // Broadcast the error to everyone in the room so it's visible on
+        // whichever device is actually stuck, not just the host's console.
+        return db.ref(`rooms/${currentRoomCode}/lastAction`).set({
+          type:'error', message: (err && err.message) || String(err), at: Date.now()
+        });
+      })
+      .finally(()=> actionsRef.child(key).remove());
   });
 }
 
@@ -1120,7 +1144,11 @@ async function finishGame(winnerUid){
    PLAYER-SIDE: send actions
 --------------------------------------------------------------------- */
 function sendAction(type, payload={}){
-  return db.ref(`actions/${currentRoomCode}`).push({ type, uid, ...payload, at: Date.now() });
+  return db.ref(`actions/${currentRoomCode}`).push({ type, uid, ...payload, at: Date.now() })
+    .catch(err=>{
+      console.error('sendAction failed:', type, err);
+      showToast('Could not send action: ' + err.message, 4000);
+    });
 }
 
 /* ---------------------------------------------------------------------
@@ -1129,6 +1157,13 @@ function sendAction(type, payload={}){
 function renderGameState(room){
   if(isHost) attachHostActionListener();
   attachMyHandListener();
+
+  // Show any processing error broadcast by the host, on every device,
+  // instead of it failing invisibly.
+  if(room.lastAction?.type === 'error' && room.lastAction.at !== lastErrorShownAt){
+    lastErrorShownAt = room.lastAction.at;
+    showToast('Game error: ' + room.lastAction.message, 5000);
+  }
 
   document.getElementById('game-room-code').textContent = currentRoomCode;
   const order = room.order;
@@ -1235,6 +1270,7 @@ function attachMyHandListener(){
 // this turn" flag when the turn actually changes — not every time our
 // hand array updates (which happens right after we draw).
 let lastSeenTurnUid = null;
+let lastErrorShownAt = 0;
 
 function renderHand(){
   const scroll = document.getElementById('hand-scroll');

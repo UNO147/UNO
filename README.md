@@ -67,7 +67,26 @@ This is the important part — it's what stops a player from reading someone els
 
 **Known limitation (read this):** the spec asked for Firebase Cloud Functions as a server-authoritative engine so clients can never cheat. I can't deploy Cloud Functions into your project from here, so this build uses the standard fallback: **the host's browser runs the game engine** (shuffles, deals, validates moves, applies effects) and writes results to the DB. The rules above stop other players from reading each other's `hands/` node or writing directly to `deck/`, which blocks the common cheats — but a player who is *hosting* a room could tamper with their own client to see the deck or force outcomes for that room. For a fully tamper-proof game you'd move `processAction()` (in `index.html`, search for that function) into a Cloud Function later; the client-side logic is written so that porting is mostly copy-paste.
 
-## What's built vs. deferred
+## If gameplay still doesn't work
+
+The app now surfaces errors as on-screen toasts instead of failing silently — re-upload `index.html` and try again first; the toast text will tell you exactly what's wrong (usually a `PERMISSION_DENIED` from a rule that didn't get pasted in correctly).
+
+To isolate whether it's a **rules problem** or a **logic problem**, temporarily paste this fully-open ruleset into Realtime Database → Rules, test a full game, then switch back to the real rules above afterward (this version has zero security — anyone with your database URL can read/write anything, so don't leave it live):
+
+```json
+{
+  "rules": {
+    ".read": "auth != null",
+    ".write": "auth != null"
+  }
+}
+```
+
+If the game works fine under open rules but breaks under the restricted rules above, the issue is a rules typo — double check the `$code` room code in your rules matches exactly (case-sensitive) and that you saved/published the rules (there's a **Publish** button in the console, not just typing them in).
+
+If it still breaks under fully open rules, it's a code bug — open your browser's DevTools console (⋮ menu → More tools → Developer tools → Console tab on desktop Chrome, or connect the phone via `chrome://inspect` from a desktop Chrome) while playing, and send me the exact error text.
+
+
 
 **Working:** anonymous login, create/join room by 6-char code, host controls (kick, start, custom starting card count 1–50 with deck-size validation), optional rules toggles (stack draw / seven-zero flag stored, seven-zero *effect* not yet implemented — draw2/wild4/skip/reverse are), private synced hands, turn order + direction, UNO call + catch-penalty, draw/pass, win detection, stat tracking (wins/matches/XP/coins), disconnect flag + host transfer, room chat with emoji, confetti on win, PWA install + offline shell caching.
 
