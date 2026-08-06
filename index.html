@@ -1,0 +1,1368 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0">
+<title>Draw Four — Online UNO</title>
+<meta name="theme-color" content="#0B3D2E">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="assets/icon-192.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@500;700;800&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet">
+
+<!-- Firebase (compat SDK, matches single-file / Realtime DB pattern) -->
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
+
+<style>
+:root{
+  --felt-1:#0B3D2E;
+  --felt-2:#0F5138;
+  --gold:#D4AF37;
+  --cream:#F4EFE3;
+  --ink:#0A1F16;
+  --red:#E5473A;
+  --yellow:#F4C430;
+  --green:#3CA35A;
+  --blue:#2E7DD1;
+  --wild-grad:linear-gradient(135deg,#E5473A,#F4C430,#3CA35A,#2E7DD1);
+  --radius:16px;
+  --shadow:0 10px 30px rgba(0,0,0,.35);
+}
+*{box-sizing:border-box;}
+html,body{height:100%;}
+body{
+  margin:0;
+  font-family:'Baloo 2',system-ui,sans-serif;
+  background:
+    radial-gradient(1200px 800px at 50% -10%, var(--felt-2), var(--felt-1) 60%),
+    repeating-linear-gradient(45deg, rgba(255,255,255,.015) 0 2px, transparent 2px 40px);
+  color:var(--cream);
+  min-height:100vh;
+  overflow-x:hidden;
+  -webkit-tap-highlight-color:transparent;
+  user-select:none;
+}
+.mono{font-family:'JetBrains Mono',monospace;}
+button{
+  font-family:inherit;
+  cursor:pointer;
+  border:none;
+  border-radius:12px;
+  font-weight:700;
+  transition:transform .12s ease, filter .12s ease, box-shadow .12s ease;
+}
+button:active{transform:scale(.95);}
+button:disabled{opacity:.4;cursor:not-allowed;transform:none;}
+.btn-primary{background:var(--gold);color:var(--ink);padding:14px 22px;font-size:1.05rem;box-shadow:0 6px 0 #9a7d1f, var(--shadow);}
+.btn-primary:active{box-shadow:0 2px 0 #9a7d1f;}
+.btn-ghost{background:rgba(255,255,255,.08);color:var(--cream);padding:12px 18px;border:2px solid rgba(255,255,255,.18);}
+.btn-danger{background:var(--red);color:#fff;padding:12px 18px;}
+.btn-small{padding:8px 14px;font-size:.85rem;border-radius:10px;}
+.hidden{display:none !important;}
+.screen{min-height:100vh;display:flex;flex-direction:column;align-items:center;padding:24px 16px 40px;}
+.container{width:100%;max-width:520px;}
+h1,h2,h3{margin:0 0 8px;font-weight:800;letter-spacing:.5px;}
+.subtitle{opacity:.75;font-size:.95rem;margin-bottom:24px;}
+
+/* ---------- Landing ---------- */
+.logo-wrap{text-align:center;margin:32px 0 40px;}
+.logo-uno{
+  display:inline-block;font-size:3.6rem;font-weight:800;
+  background:var(--wild-grad);
+  -webkit-background-clip:text;background-clip:text;color:transparent;
+  filter:drop-shadow(0 4px 12px rgba(0,0,0,.4));
+  animation:pulseGlow 3s ease-in-out infinite;
+}
+@keyframes pulseGlow{0%,100%{filter:drop-shadow(0 4px 12px rgba(0,0,0,.4));}50%{filter:drop-shadow(0 4px 26px rgba(212,175,55,.45));}}
+.menu-grid{display:grid;gap:14px;}
+.menu-btn{
+  display:flex;align-items:center;gap:14px;
+  background:rgba(255,255,255,.06);border:2px solid rgba(255,255,255,.12);
+  color:var(--cream);padding:16px 18px;border-radius:var(--radius);font-size:1.05rem;text-align:left;
+}
+.menu-btn .ic{font-size:1.4rem;width:28px;text-align:center;}
+.menu-btn:hover{background:rgba(255,255,255,.1);}
+
+/* ---------- Forms ---------- */
+.field{margin-bottom:16px;}
+.field label{display:block;font-size:.8rem;opacity:.7;margin-bottom:6px;text-transform:uppercase;letter-spacing:1px;}
+.field input,.field select{
+  width:100%;padding:13px 14px;border-radius:12px;border:2px solid rgba(255,255,255,.15);
+  background:rgba(0,0,0,.25);color:var(--cream);font-size:1.05rem;font-family:inherit;
+}
+.field input:focus,.field select:focus{outline:none;border-color:var(--gold);}
+.card-count-row{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;}
+.count-opt{padding:12px 4px;background:rgba(255,255,255,.06);border:2px solid rgba(255,255,255,.15);border-radius:10px;color:var(--cream);font-weight:700;}
+.count-opt.active{background:var(--gold);color:var(--ink);border-color:var(--gold);}
+.back-row{display:flex;align-items:center;gap:12px;margin-bottom:18px;}
+.back-btn{background:transparent;color:var(--cream);font-size:1.4rem;padding:4px 10px;}
+.error-box{background:rgba(229,71,58,.15);border:1px solid var(--red);color:#ffb3ab;padding:10px 14px;border-radius:10px;margin-bottom:14px;font-size:.9rem;}
+
+/* ---------- Lobby ---------- */
+.room-code-card{
+  background:rgba(0,0,0,.3);border:2px dashed var(--gold);border-radius:var(--radius);
+  padding:18px;text-align:center;margin-bottom:20px;
+}
+.room-code-card .code{font-size:2.2rem;letter-spacing:6px;font-weight:700;color:var(--gold);}
+.code-actions{display:flex;gap:10px;justify-content:center;margin-top:10px;}
+.player-list{display:flex;flex-direction:column;gap:10px;margin:16px 0;}
+.player-row{
+  display:flex;align-items:center;gap:12px;background:rgba(255,255,255,.06);
+  border-radius:12px;padding:10px 14px;border:2px solid transparent;
+}
+.player-row.host{border-color:var(--gold);}
+.avatar{
+  width:40px;height:40px;border-radius:50%;display:flex;align-items:center;justify-content:center;
+  font-weight:800;font-size:1.1rem;color:#fff;flex-shrink:0;
+}
+.player-name{flex:1;font-weight:700;}
+.player-tag{font-size:.7rem;padding:3px 8px;border-radius:8px;background:var(--gold);color:var(--ink);font-weight:700;}
+.ready-dot{width:12px;height:12px;border-radius:50%;background:#555;flex-shrink:0;}
+.ready-dot.on{background:var(--green);box-shadow:0 0 8px var(--green);}
+.settings-box{background:rgba(255,255,255,.05);border-radius:var(--radius);padding:16px;margin-bottom:16px;}
+.rule-toggle{display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid rgba(255,255,255,.08);}
+.rule-toggle:last-child{border-bottom:none;}
+.switch{position:relative;width:44px;height:24px;background:rgba(255,255,255,.2);border-radius:20px;}
+.switch.on{background:var(--green);}
+.switch::after{content:'';position:absolute;top:2px;left:2px;width:20px;height:20px;background:#fff;border-radius:50%;transition:.2s;}
+.switch.on::after{left:22px;}
+.lobby-actions{display:flex;gap:10px;flex-wrap:wrap;}
+.lobby-actions button{flex:1;}
+
+/* ---------- Game Table ---------- */
+.game-wrap{
+  position:fixed;inset:0;display:flex;flex-direction:column;
+  background:radial-gradient(1200px 900px at 50% 30%, var(--felt-2), var(--felt-1) 70%);
+}
+.top-bar{
+  display:flex;justify-content:space-between;align-items:center;padding:10px 14px;
+  background:rgba(0,0,0,.25);z-index:5;
+}
+.top-bar .room-mini{font-size:.85rem;opacity:.8;}
+.icon-btn{background:rgba(255,255,255,.1);color:var(--cream);width:36px;height:36px;border-radius:10px;font-size:1.1rem;}
+
+.opponents-strip{
+  display:flex;gap:10px;padding:10px 14px;overflow-x:auto;flex-shrink:0;
+}
+.opp-card{
+  display:flex;flex-direction:column;align-items:center;gap:4px;padding:8px 10px;
+  background:rgba(255,255,255,.06);border-radius:12px;min-width:64px;border:2px solid transparent;
+  position:relative;flex-shrink:0;
+}
+.opp-card.turn{border-color:var(--gold);box-shadow:0 0 14px rgba(212,175,55,.5);}
+.opp-card .cnt{font-size:.75rem;font-weight:700;background:rgba(0,0,0,.4);padding:1px 8px;border-radius:8px;}
+.opp-card .discname{font-size:.7rem;max-width:60px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+
+.center-table{
+  flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px;position:relative;
+}
+.direction-indicator{font-size:1.6rem;opacity:.6;letter-spacing:6px;animation:driftDir 2.4s linear infinite;}
+@keyframes driftDir{0%{opacity:.35;}50%{opacity:.8;}100%{opacity:.35;}}
+.piles-row{display:flex;align-items:center;gap:34px;}
+.pile-stack{position:relative;width:76px;height:108px;}
+.uno-card{
+  position:absolute;inset:0;border-radius:10px;box-shadow:0 6px 16px rgba(0,0,0,.4);
+  display:flex;align-items:center;justify-content:center;font-weight:800;font-size:1.6rem;color:#fff;
+  border:3px solid rgba(255,255,255,.85);
+}
+.uno-card.back{
+  background:repeating-linear-gradient(135deg,#111 0 6px,#1c1c1c 6px 12px);
+  border-color:var(--gold);
+}
+.uno-card .uno-oval{
+  position:absolute;width:70%;height:46%;background:#fff;border-radius:50%;transform:rotate(-20deg);
+  display:flex;align-items:center;justify-content:center;color:#111;font-size:.85rem;font-weight:800;
+}
+.draw-pile-count{position:absolute;bottom:-22px;left:50%;transform:translateX(-50%);font-size:.75rem;opacity:.7;}
+.color-dot-indicator{width:22px;height:22px;border-radius:50%;border:3px solid #fff;box-shadow:var(--shadow);}
+.turn-banner{
+  position:absolute;top:8px;left:50%;transform:translateX(-50%);
+  background:rgba(0,0,0,.45);padding:6px 18px;border-radius:20px;font-weight:700;font-size:.9rem;
+  border:1px solid rgba(255,255,255,.15);
+}
+.turn-banner.me{background:var(--gold);color:var(--ink);}
+
+.action-row{display:flex;gap:10px;justify-content:center;padding:6px 14px;flex-wrap:wrap;}
+.pending-draw-note{font-size:.8rem;opacity:.7;text-align:center;}
+
+.hand-wrap{
+  padding:10px 6px 18px;background:rgba(0,0,0,.2);flex-shrink:0;
+}
+.hand-scroll{
+  display:flex;gap:-14px;overflow-x:auto;padding:14px 10px 6px;justify-content:flex-start;
+}
+.hand-card{
+  position:relative;width:64px;height:92px;border-radius:9px;flex-shrink:0;
+  margin-right:-22px;transition:transform .15s ease, margin .15s ease, box-shadow .15s ease;
+  border:3px solid rgba(255,255,255,.9);box-shadow:0 4px 10px rgba(0,0,0,.4);
+  display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800;font-size:1.3rem;
+}
+.hand-card:last-child{margin-right:0;}
+.hand-card.playable{transform:translateY(-10px);}
+.hand-card.playable:active{transform:translateY(-4px) scale(.94);}
+.hand-card.unplayable{filter:brightness(.55) saturate(.6);}
+.hand-card .uno-oval{position:absolute;width:76%;height:48%;background:#fff;border-radius:50%;transform:rotate(-20deg);display:flex;align-items:center;justify-content:center;color:#111;font-size:.9rem;font-weight:800;}
+
+.c-red{background:var(--red);} .c-yellow{background:var(--yellow);color:#3a2c00;}
+.c-green{background:var(--green);} .c-blue{background:var(--blue);}
+.c-wild{background:linear-gradient(135deg,var(--red),var(--yellow),var(--green),var(--blue));}
+
+.color-picker-overlay{
+  position:fixed;inset:0;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;z-index:50;
+}
+.color-picker{background:var(--felt-2);padding:24px;border-radius:20px;text-align:center;box-shadow:var(--shadow);}
+.color-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:16px;}
+.color-swatch{width:80px;height:80px;border-radius:16px;border:3px solid rgba(255,255,255,.6);}
+
+.uno-call-btn{
+  position:fixed;right:16px;bottom:150px;z-index:20;
+  width:64px;height:64px;border-radius:50%;background:var(--red);color:#fff;font-weight:800;font-size:.95rem;
+  box-shadow:0 0 0 rgba(229,71,58,.5);
+}
+.uno-call-btn.urgent{animation:unoUrge 1s ease-in-out infinite;}
+@keyframes unoUrge{0%,100%{box-shadow:0 0 0 0 rgba(229,71,58,.6);}50%{box-shadow:0 0 0 14px rgba(229,71,58,0);}}
+
+.catch-btn{position:fixed;left:16px;bottom:150px;z-index:20;}
+
+.toast{
+  position:fixed;top:14px;left:50%;transform:translateX(-50%);
+  background:rgba(0,0,0,.85);color:#fff;padding:10px 20px;border-radius:12px;font-size:.9rem;
+  z-index:60;box-shadow:var(--shadow);max-width:90vw;text-align:center;
+}
+
+/* Chat */
+.chat-toggle{position:fixed;right:16px;bottom:70px;z-index:20;width:52px;height:52px;border-radius:50%;background:rgba(255,255,255,.12);color:var(--cream);font-size:1.3rem;}
+.chat-panel{
+  position:fixed;bottom:0;right:0;left:0;max-width:520px;margin:0 auto;
+  background:rgba(10,25,18,.97);border-top-left-radius:20px;border-top-right-radius:20px;
+  z-index:40;display:flex;flex-direction:column;height:50vh;box-shadow:var(--shadow);
+}
+.chat-header{display:flex;justify-content:space-between;padding:12px 16px;border-bottom:1px solid rgba(255,255,255,.1);}
+.chat-msgs{flex:1;overflow-y:auto;padding:10px 16px;display:flex;flex-direction:column;gap:6px;}
+.chat-msg{font-size:.88rem;}
+.chat-msg b{color:var(--gold);}
+.chat-input-row{display:flex;gap:8px;padding:10px 14px;border-top:1px solid rgba(255,255,255,.1);}
+.chat-input-row input{flex:1;padding:10px 12px;border-radius:20px;border:none;background:rgba(255,255,255,.1);color:var(--cream);}
+.emoji-row{display:flex;gap:6px;padding:0 14px 8px;}
+.emoji-row button{background:rgba(255,255,255,.08);font-size:1.2rem;padding:4px 8px;}
+
+/* Confetti */
+.confetti-piece{position:fixed;top:-20px;width:8px;height:14px;z-index:70;pointer-events:none;}
+
+.winner-overlay{
+  position:fixed;inset:0;background:rgba(0,0,0,.75);display:flex;align-items:center;justify-content:center;
+  flex-direction:column;z-index:80;text-align:center;
+}
+.winner-overlay h1{font-size:2.4rem;background:var(--wild-grad);-webkit-background-clip:text;background-clip:text;color:transparent;}
+
+@media (min-width:640px){
+  .hand-card{width:78px;height:112px;}
+}
+</style>
+</head>
+<body>
+
+<!-- ============ LANDING SCREEN ============ -->
+<div id="screen-landing" class="screen">
+  <div class="container">
+    <div class="logo-wrap">
+      <div class="logo-uno">DRAW FOUR</div>
+      <div class="subtitle">Online multiplayer UNO — real cards, real friends, any device.</div>
+    </div>
+    <div class="field">
+      <label>Your name</label>
+      <input id="input-username" maxlength="16" placeholder="Enter a display name">
+    </div>
+    <div class="menu-grid">
+      <button class="menu-btn" id="btn-goto-create"><span class="ic">🃏</span> Create Room</button>
+      <button class="menu-btn" id="btn-goto-join"><span class="ic">🔑</span> Join Room</button>
+      <button class="menu-btn" id="btn-goto-profile"><span class="ic">👤</span> Profile & Stats</button>
+    </div>
+    <div id="landing-error" class="error-box hidden" style="margin-top:16px;"></div>
+  </div>
+</div>
+
+<!-- ============ CREATE ROOM SCREEN ============ -->
+<div id="screen-create" class="screen hidden">
+  <div class="container">
+    <div class="back-row"><button class="back-btn" data-back="landing">←</button><h2>Create Room</h2></div>
+
+    <div class="field">
+      <label>Room privacy</label>
+      <select id="select-privacy">
+        <option value="private">Private (code only)</option>
+        <option value="public">Public (listed)</option>
+      </select>
+    </div>
+
+    <div class="field">
+      <label>Max players (2–10)</label>
+      <input id="input-maxplayers" type="number" min="2" max="10" value="4">
+    </div>
+
+    <div class="field">
+      <label>Starting cards</label>
+      <div class="card-count-row" id="card-count-row">
+        <button class="count-opt active" data-count="7">7</button>
+        <button class="count-opt" data-count="14">14</button>
+        <button class="count-opt" data-count="21">21</button>
+        <button class="count-opt" data-count="custom">Custom</button>
+      </div>
+      <input id="input-custom-count" type="number" min="1" max="50" placeholder="1–50" class="hidden" style="margin-top:10px;">
+    </div>
+
+    <div class="settings-box">
+      <h3 style="font-size:.95rem;">Optional Rules</h3>
+      <div class="rule-toggle"><span>Stack Draw Cards (+2 on +2)</span><div class="switch" data-rule="stackDraw"></div></div>
+      <div class="rule-toggle"><span>Seven-Zero (swap/rotate hands)</span><div class="switch" data-rule="sevenZero"></div></div>
+      <div class="rule-toggle"><span>Draw Until Playable</span><div class="switch" data-rule="drawUntilPlayable"></div></div>
+    </div>
+
+    <div id="create-error" class="error-box hidden"></div>
+    <button class="btn-primary" id="btn-create-room" style="width:100%;">Create Room</button>
+  </div>
+</div>
+
+<!-- ============ JOIN ROOM SCREEN ============ -->
+<div id="screen-join" class="screen hidden">
+  <div class="container">
+    <div class="back-row"><button class="back-btn" data-back="landing">←</button><h2>Join Room</h2></div>
+    <div class="field">
+      <label>Room Code</label>
+      <input id="input-joincode" maxlength="6" placeholder="ABC123" class="mono" style="text-transform:uppercase;letter-spacing:4px;font-size:1.3rem;text-align:center;">
+    </div>
+    <div id="join-error" class="error-box hidden"></div>
+    <button class="btn-primary" id="btn-join-room" style="width:100%;">Join Room</button>
+  </div>
+</div>
+
+<!-- ============ PROFILE SCREEN ============ -->
+<div id="screen-profile" class="screen hidden">
+  <div class="container">
+    <div class="back-row"><button class="back-btn" data-back="landing">←</button><h2>Profile</h2></div>
+    <div class="settings-box" id="profile-box">
+      <div style="display:flex;align-items:center;gap:14px;margin-bottom:14px;">
+        <div class="avatar" id="profile-avatar" style="width:56px;height:56px;font-size:1.4rem;"></div>
+        <div>
+          <div style="font-weight:800;font-size:1.2rem;" id="profile-name-display">—</div>
+          <div style="opacity:.6;font-size:.8rem;" id="profile-level">Level 1</div>
+        </div>
+      </div>
+      <div class="rule-toggle"><span>Wins</span><b id="stat-wins">0</b></div>
+      <div class="rule-toggle"><span>Matches Played</span><b id="stat-matches">0</b></div>
+      <div class="rule-toggle"><span>Win Rate</span><b id="stat-winrate">0%</b></div>
+      <div class="rule-toggle"><span>XP</span><b id="stat-xp">0</b></div>
+      <div class="rule-toggle"><span>Coins</span><b id="stat-coins">0</b></div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ LOBBY SCREEN ============ -->
+<div id="screen-lobby" class="screen hidden">
+  <div class="container">
+    <div class="back-row"><button class="back-btn" id="btn-leave-lobby">←</button><h2>Lobby</h2></div>
+
+    <div class="room-code-card">
+      <div style="opacity:.7;font-size:.8rem;">ROOM CODE</div>
+      <div class="code mono" id="lobby-code">------</div>
+      <div class="code-actions">
+        <button class="btn-ghost btn-small" id="btn-copy-code">📋 Copy</button>
+        <button class="btn-ghost btn-small" id="btn-share-code">📤 Share</button>
+      </div>
+    </div>
+
+    <div class="settings-box">
+      <div class="rule-toggle"><span>Starting Cards</span><b id="lobby-startcards">7</b></div>
+      <div class="rule-toggle"><span>Max Players</span><b id="lobby-maxplayers">4</b></div>
+      <div class="rule-toggle"><span>Stack Draw</span><b id="lobby-rule-stack">Off</b></div>
+      <div class="rule-toggle"><span>Seven-Zero</span><b id="lobby-rule-sevenzero">Off</b></div>
+      <div class="rule-toggle"><span>Draw Until Playable</span><b id="lobby-rule-draw">Off</b></div>
+    </div>
+
+    <h3 style="font-size:.95rem;">Players (<span id="lobby-player-count">0</span>/<span id="lobby-max-count">4</span>)</h3>
+    <div class="player-list" id="lobby-player-list"></div>
+
+    <div id="lobby-error" class="error-box hidden"></div>
+
+    <div class="lobby-actions">
+      <button class="btn-primary" id="btn-toggle-ready">Ready</button>
+      <button class="btn-primary hidden" id="btn-start-game">Start Game</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ GAME SCREEN ============ -->
+<div id="screen-game" class="game-wrap hidden">
+  <div class="top-bar">
+    <div class="room-mini mono">Room <span id="game-room-code"></span></div>
+    <button class="icon-btn" id="btn-game-leave">✕</button>
+  </div>
+
+  <div class="opponents-strip" id="opponents-strip"></div>
+
+  <div class="center-table">
+    <div class="turn-banner" id="turn-banner">—</div>
+    <div class="direction-indicator" id="direction-indicator">➜ ➜ ➜</div>
+    <div class="piles-row">
+      <div class="pile-stack">
+        <div class="uno-card back" id="draw-pile-visual">🂠</div>
+        <div class="draw-pile-count" id="draw-pile-count">0 left</div>
+      </div>
+      <div style="display:flex;flex-direction:column;align-items:center;gap:8px;">
+        <div class="pile-stack" id="discard-pile-visual"></div>
+        <div class="color-dot-indicator" id="current-color-dot"></div>
+      </div>
+    </div>
+    <div class="pending-draw-note hidden" id="pending-draw-note">You drew a card — play it or pass.</div>
+  </div>
+
+  <div class="action-row">
+    <button class="btn-ghost btn-small" id="btn-draw-card">Draw Card</button>
+    <button class="btn-ghost btn-small hidden" id="btn-pass-turn">Pass</button>
+  </div>
+
+  <button class="uno-call-btn hidden" id="btn-call-uno">UNO!</button>
+  <button class="btn-danger catch-btn btn-small hidden" id="btn-catch-uno">Catch!</button>
+
+  <button class="chat-toggle" id="btn-toggle-chat">💬</button>
+
+  <div class="hand-wrap">
+    <div class="hand-scroll" id="hand-scroll"></div>
+  </div>
+</div>
+
+<!-- Chat Panel -->
+<div class="chat-panel hidden" id="chat-panel">
+  <div class="chat-header">
+    <b>Room Chat</b>
+    <button class="icon-btn" id="btn-close-chat">✕</button>
+  </div>
+  <div class="chat-msgs" id="chat-msgs"></div>
+  <div class="emoji-row">
+    <button data-emoji="👍">👍</button>
+    <button data-emoji="😂">😂</button>
+    <button data-emoji="😱">😱</button>
+    <button data-emoji="🔥">🔥</button>
+    <button data-emoji="🎉">🎉</button>
+  </div>
+  <div class="chat-input-row">
+    <input id="chat-input" maxlength="120" placeholder="Say something...">
+    <button class="btn-primary btn-small" id="btn-send-chat">Send</button>
+  </div>
+</div>
+
+<!-- Color Picker -->
+<div class="color-picker-overlay hidden" id="color-picker-overlay">
+  <div class="color-picker">
+    <h3>Choose a color</h3>
+    <div class="color-grid">
+      <div class="color-swatch c-red" data-color="red"></div>
+      <div class="color-swatch c-yellow" data-color="yellow"></div>
+      <div class="color-swatch c-green" data-color="green"></div>
+      <div class="color-swatch c-blue" data-color="blue"></div>
+    </div>
+  </div>
+</div>
+
+<!-- Winner Overlay -->
+<div class="winner-overlay hidden" id="winner-overlay">
+  <h1 id="winner-title">🎉 Winner!</h1>
+  <p id="winner-name" style="font-size:1.2rem;"></p>
+  <button class="btn-primary" id="btn-winner-close" style="margin-top:20px;">Back to Lobby</button>
+</div>
+
+<div id="toast-root"></div>
+
+<script>
+/* =====================================================================
+   FIREBASE CONFIG — replace with your own project's config object.
+   Realtime Database rules required — see README.md for the ruleset.
+===================================================================== */
+const FIREBASE_CONFIG = {
+  apiKey: "AIzaSyBgrOB4SoEMKZIGAC1hsE-u5dkzr9OaJ6c",
+  authDomain: "uno7-c4bed.firebaseapp.com",
+  databaseURL: "https://uno7-c4bed-default-rtdb.asia-southeast1.firebasedatabase.app",
+  projectId: "uno7-c4bed",
+  storageBucket: "uno7-c4bed.firebasestorage.app",
+  messagingSenderId: "425623787646",
+  appId: "1:425623787646:web:8d1573ee3de0cd6c92a02f",
+  measurementId: "G-5RG9MNDXBV"
+};
+
+firebase.initializeApp(FIREBASE_CONFIG);
+const auth = firebase.auth();
+const db = firebase.database();
+
+/* ---------------------------------------------------------------------
+   GLOBAL STATE
+--------------------------------------------------------------------- */
+let uid = null;
+let username = localStorage.getItem('uno_username') || '';
+let currentRoomCode = null;
+let isHost = false;
+let roomRef = null;
+let roomListener = null;
+let myHandRef = null;
+let myHandListener = null;
+let actionsRef = null;
+let actionsListener = null;
+let chatRef = null;
+let chatListener = null;
+let localRoomState = null;
+let localHand = [];
+let pendingWildCardId = null;
+let hasDrawnThisTurn = false;
+let createSettings = { startingCards: 7, maxPlayers: 4, privacy: 'private', rules: { stackDraw:false, sevenZero:false, drawUntilPlayable:false } };
+
+const COLORS = ['red','yellow','green','blue'];
+const AVATAR_COLORS = ['#E5473A','#2E7DD1','#3CA35A','#F4C430','#8E44AD','#E67E22','#16A085','#C0392B'];
+
+function avatarColorFor(id){
+  let h=0; for(let i=0;i<id.length;i++) h = (h*31 + id.charCodeAt(i))>>>0;
+  return AVATAR_COLORS[h % AVATAR_COLORS.length];
+}
+function initials(name){ return (name||'?').trim().slice(0,2).toUpperCase(); }
+
+function showScreen(id){
+  document.querySelectorAll('.screen').forEach(s=>s.classList.add('hidden'));
+  document.getElementById(id).classList.remove('hidden');
+}
+function showToast(msg, ms=2200){
+  const t = document.createElement('div');
+  t.className='toast'; t.textContent=msg;
+  document.getElementById('toast-root').appendChild(t);
+  setTimeout(()=>t.remove(), ms);
+}
+function playSound(name){
+  // Hook for sound assets. Drop files in /sounds/ and uncomment below.
+  // const a = new Audio(`sounds/${name}.mp3`); a.play().catch(()=>{});
+}
+
+/* ---------------------------------------------------------------------
+   AUTH — Anonymous sign-in
+--------------------------------------------------------------------- */
+auth.onAuthStateChanged(user=>{
+  if(user){
+    uid = user.uid;
+    loadProfile();
+  } else {
+    auth.signInAnonymously().catch(err=>{
+      showToast('Auth failed: '+err.message, 4000);
+    });
+  }
+});
+
+function loadProfile(){
+  db.ref('users/'+uid).once('value').then(snap=>{
+    if(!snap.exists()){
+      db.ref('users/'+uid).set({
+        name: username || ('Guest'+uid.slice(0,4)),
+        wins:0, matchesPlayed:0, coins:100, xp:0, level:1, createdAt: Date.now()
+      });
+    }
+  });
+}
+
+document.getElementById('input-username').value = username;
+document.getElementById('input-username').addEventListener('change', e=>{
+  username = e.target.value.trim().slice(0,16) || 'Guest';
+  localStorage.setItem('uno_username', username);
+  if(uid) db.ref('users/'+uid+'/name').set(username);
+});
+
+/* ---------------------------------------------------------------------
+   NAVIGATION
+--------------------------------------------------------------------- */
+document.getElementById('btn-goto-create').onclick = ()=>{
+  if(!ensureUsername()) return;
+  showScreen('screen-create');
+};
+document.getElementById('btn-goto-join').onclick = ()=>{
+  if(!ensureUsername()) return;
+  showScreen('screen-join');
+};
+document.getElementById('btn-goto-profile').onclick = ()=>{
+  renderProfile();
+  showScreen('screen-profile');
+};
+document.querySelectorAll('[data-back]').forEach(b=>{
+  b.addEventListener('click', ()=> showScreen('screen-'+b.dataset.back));
+});
+function ensureUsername(){
+  username = document.getElementById('input-username').value.trim();
+  if(!username){
+    document.getElementById('landing-error').textContent = 'Enter a display name first.';
+    document.getElementById('landing-error').classList.remove('hidden');
+    return false;
+  }
+  localStorage.setItem('uno_username', username);
+  if(uid) db.ref('users/'+uid+'/name').set(username);
+  document.getElementById('landing-error').classList.add('hidden');
+  return true;
+}
+
+function renderProfile(){
+  db.ref('users/'+uid).once('value').then(snap=>{
+    const d = snap.val() || {};
+    document.getElementById('profile-avatar').style.background = avatarColorFor(uid);
+    document.getElementById('profile-avatar').textContent = initials(d.name);
+    document.getElementById('profile-name-display').textContent = d.name || 'Guest';
+    document.getElementById('profile-level').textContent = 'Level '+(d.level||1);
+    document.getElementById('stat-wins').textContent = d.wins||0;
+    document.getElementById('stat-matches').textContent = d.matchesPlayed||0;
+    const wr = d.matchesPlayed ? Math.round(100*(d.wins||0)/d.matchesPlayed) : 0;
+    document.getElementById('stat-winrate').textContent = wr+'%';
+    document.getElementById('stat-xp').textContent = d.xp||0;
+    document.getElementById('stat-coins').textContent = d.coins||0;
+  });
+}
+
+/* ---------------------------------------------------------------------
+   CREATE ROOM UI
+--------------------------------------------------------------------- */
+document.getElementById('card-count-row').addEventListener('click', e=>{
+  const btn = e.target.closest('.count-opt');
+  if(!btn) return;
+  document.querySelectorAll('.count-opt').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  const custom = document.getElementById('input-custom-count');
+  if(btn.dataset.count === 'custom'){
+    custom.classList.remove('hidden');
+    createSettings.startingCards = parseInt(custom.value)||7;
+  } else {
+    custom.classList.add('hidden');
+    createSettings.startingCards = parseInt(btn.dataset.count);
+  }
+});
+document.getElementById('input-custom-count').addEventListener('input', e=>{
+  let v = parseInt(e.target.value)||1;
+  v = Math.max(1, Math.min(50, v));
+  createSettings.startingCards = v;
+});
+document.querySelectorAll('.settings-box [data-rule]').forEach(sw=>{
+  sw.addEventListener('click', ()=>{
+    sw.classList.toggle('on');
+    createSettings.rules[sw.dataset.rule] = sw.classList.contains('on');
+  });
+});
+
+document.getElementById('btn-create-room').onclick = async ()=>{
+  const errBox = document.getElementById('create-error');
+  errBox.classList.add('hidden');
+  const maxPlayers = Math.max(2, Math.min(10, parseInt(document.getElementById('input-maxplayers').value)||4));
+  const privacy = document.getElementById('select-privacy').value;
+  const startingCards = createSettings.startingCards;
+
+  // Deck size check: 108 total cards
+  const DECK_SIZE = 108;
+  if(startingCards * maxPlayers + 10 > DECK_SIZE){ // keep buffer for draw pile
+    errBox.textContent = `Not enough cards: ${maxPlayers} players × ${startingCards} cards exceeds the ${DECK_SIZE}-card deck (with draw pile buffer). Lower the starting count or player max.`;
+    errBox.classList.remove('hidden');
+    return;
+  }
+
+  const code = generateRoomCode();
+  const roomData = {
+    hostUid: uid,
+    status: 'lobby',
+    maxPlayers,
+    startingCards,
+    privacy,
+    rules: createSettings.rules,
+    createdAt: firebase.database.ServerValue.TIMESTAMP,
+    players: {
+      [uid]: { name: username, ready:false, isHost:true, connected:true, joinedAt: Date.now() }
+    },
+    order: [uid]
+  };
+  await db.ref('rooms/'+code).set(roomData);
+  if(privacy==='public'){
+    db.ref('publicRooms/'+code).set({ code, players:1, maxPlayers, createdAt: Date.now() });
+  }
+  enterRoom(code, true);
+};
+
+function generateRoomCode(){
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  let s=''; for(let i=0;i<6;i++) s += chars[Math.floor(Math.random()*chars.length)];
+  return s;
+}
+
+/* ---------------------------------------------------------------------
+   JOIN ROOM UI
+--------------------------------------------------------------------- */
+document.getElementById('btn-join-room').onclick = async ()=>{
+  const errBox = document.getElementById('join-error');
+  errBox.classList.add('hidden');
+  const code = document.getElementById('input-joincode').value.trim().toUpperCase();
+  if(code.length!==6){ errBox.textContent='Enter a valid 6-character code.'; errBox.classList.remove('hidden'); return; }
+
+  const snap = await db.ref('rooms/'+code).once('value');
+  if(!snap.exists()){ errBox.textContent='Room not found.'; errBox.classList.remove('hidden'); return; }
+  const room = snap.val();
+  if(room.status !== 'lobby'){ errBox.textContent='This game has already started.'; errBox.classList.remove('hidden'); return; }
+  const playerCount = room.players ? Object.keys(room.players).length : 0;
+  if(room.players && room.players[uid]){
+    enterRoom(code, room.hostUid===uid);
+    return;
+  }
+  if(playerCount >= room.maxPlayers){ errBox.textContent='Room is full.'; errBox.classList.remove('hidden'); return; }
+
+  await db.ref(`rooms/${code}/players/${uid}`).set({ name: username, ready:false, isHost:false, connected:true, joinedAt: Date.now() });
+  await db.ref(`rooms/${code}/order`).transaction(order=>{
+    order = order || [];
+    if(!order.includes(uid)) order.push(uid);
+    return order;
+  });
+  enterRoom(code, false);
+};
+
+/* ---------------------------------------------------------------------
+   ENTER ROOM / LOBBY SYNC
+--------------------------------------------------------------------- */
+function enterRoom(code, hostFlag){
+  currentRoomCode = code;
+  isHost = hostFlag;
+  showScreen('screen-lobby');
+  document.getElementById('lobby-code').textContent = code;
+
+  // presence / disconnect handling
+  const presenceRef = db.ref(`rooms/${code}/players/${uid}/connected`);
+  presenceRef.set(true);
+  presenceRef.onDisconnect().set(false);
+  db.ref(`rooms/${code}/players/${uid}/lastSeen`).onDisconnect().set(firebase.database.ServerValue.TIMESTAMP);
+
+  if(roomListener) roomRef.off('value', roomListener);
+  roomRef = db.ref('rooms/'+code);
+  roomListener = roomRef.on('value', snap=>{
+    const room = snap.val();
+    if(!room){ showToast('Room closed.'); leaveRoomCleanup(); showScreen('screen-landing'); return; }
+    localRoomState = room;
+    if(room.status === 'lobby') renderLobby(room);
+    else if(room.status === 'playing') { renderGameState(room); showScreen('screen-game'); }
+    else if(room.status === 'finished') { renderGameState(room); showWinner(room); }
+  });
+
+  listenChat(code);
+}
+
+function renderLobby(room){
+  document.getElementById('lobby-startcards').textContent = room.startingCards;
+  document.getElementById('lobby-maxplayers').textContent = room.maxPlayers;
+  document.getElementById('lobby-max-count').textContent = room.maxPlayers;
+  document.getElementById('lobby-rule-stack').textContent = room.rules?.stackDraw ? 'On':'Off';
+  document.getElementById('lobby-rule-sevenzero').textContent = room.rules?.sevenZero ? 'On':'Off';
+  document.getElementById('lobby-rule-draw').textContent = room.rules?.drawUntilPlayable ? 'On':'Off';
+
+  const list = document.getElementById('lobby-player-list');
+  list.innerHTML = '';
+  const players = room.players || {};
+  const order = room.order || Object.keys(players);
+  document.getElementById('lobby-player-count').textContent = Object.keys(players).length;
+
+  order.forEach(pid=>{
+    const p = players[pid];
+    if(!p) return;
+    const row = document.createElement('div');
+    row.className = 'player-row' + (p.isHost ? ' host':'');
+    row.innerHTML = `
+      <div class="avatar" style="background:${avatarColorFor(pid)}">${initials(p.name)}</div>
+      <div class="player-name">${escapeHtml(p.name)} ${pid===uid?'(you)':''}</div>
+      ${p.isHost ? '<span class="player-tag">HOST</span>' : ''}
+      <div class="ready-dot ${p.ready ? 'on':''}"></div>
+      ${(isHost && pid!==uid) ? `<button class="btn-ghost btn-small" data-kick="${pid}">Kick</button>` : ''}
+    `;
+    list.appendChild(row);
+  });
+  list.querySelectorAll('[data-kick]').forEach(b=>{
+    b.onclick = ()=> kickPlayer(b.dataset.kick);
+  });
+
+  const me = players[uid];
+  document.getElementById('btn-toggle-ready').textContent = me?.ready ? 'Unready' : 'Ready';
+  const startBtn = document.getElementById('btn-start-game');
+  if(isHost){
+    startBtn.classList.remove('hidden');
+    const allReady = order.every(pid=> players[pid] && players[pid].ready);
+    const enoughPlayers = order.length >= 2;
+    startBtn.disabled = !(allReady && enoughPlayers);
+  } else {
+    startBtn.classList.add('hidden');
+  }
+}
+
+document.getElementById('btn-toggle-ready').onclick = ()=>{
+  const me = localRoomState.players[uid];
+  db.ref(`rooms/${currentRoomCode}/players/${uid}/ready`).set(!me.ready);
+};
+
+async function kickPlayer(pid){
+  await db.ref(`rooms/${currentRoomCode}/players/${pid}`).remove();
+  await db.ref(`rooms/${currentRoomCode}/order`).transaction(order=> (order||[]).filter(x=>x!==pid));
+}
+
+document.getElementById('btn-leave-lobby').onclick = async ()=>{
+  await leaveRoom();
+  showScreen('screen-landing');
+};
+
+async function leaveRoom(){
+  if(!currentRoomCode) return;
+  if(isHost){
+    // transfer host or delete room if alone
+    const order = (localRoomState.order||[]).filter(x=>x!==uid);
+    if(order.length>0){
+      await db.ref(`rooms/${currentRoomCode}/players/${uid}`).remove();
+      await db.ref(`rooms/${currentRoomCode}/order`).set(order);
+      await db.ref(`rooms/${currentRoomCode}/hostUid`).set(order[0]);
+      await db.ref(`rooms/${currentRoomCode}/players/${order[0]}/isHost`).set(true);
+    } else {
+      await db.ref(`rooms/${currentRoomCode}`).remove();
+      await db.ref(`publicRooms/${currentRoomCode}`).remove();
+    }
+  } else {
+    await db.ref(`rooms/${currentRoomCode}/players/${uid}`).remove();
+    await db.ref(`rooms/${currentRoomCode}/order`).transaction(order=> (order||[]).filter(x=>x!==uid));
+  }
+  leaveRoomCleanup();
+}
+function leaveRoomCleanup(){
+  if(roomListener) roomRef.off('value', roomListener);
+  if(myHandListener) myHandRef.off('value', myHandListener);
+  if(actionsListener) actionsRef.off('child_added', actionsListener);
+  if(chatListener) chatRef.off('child_added', chatListener);
+  currentRoomCode = null; isHost=false; localRoomState=null; localHand=[];
+}
+
+document.getElementById('btn-copy-code').onclick = ()=>{
+  navigator.clipboard?.writeText(currentRoomCode);
+  showToast('Room code copied!');
+};
+document.getElementById('btn-share-code').onclick = ()=>{
+  const text = `Join my UNO game! Room code: ${currentRoomCode}`;
+  if(navigator.share) navigator.share({ title:'Draw Four', text });
+  else { navigator.clipboard?.writeText(text); showToast('Share text copied!'); }
+};
+
+function escapeHtml(s){ return (s||'').replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+/* =====================================================================
+   GAME ENGINE  (host-authoritative — no Cloud Functions deployment
+   assumed. The host's client runs this logic and writes results to
+   Realtime DB. See README.md for the security tradeoff and DB rules.)
+===================================================================== */
+function buildDeck(){
+  const deck = [];
+  let id = 0;
+  COLORS.forEach(color=>{
+    deck.push({id:'c'+(id++), color, value:'0'});
+    for(let n=1;n<=9;n++){
+      deck.push({id:'c'+(id++), color, value:String(n)});
+      deck.push({id:'c'+(id++), color, value:String(n)});
+    }
+    ['skip','reverse','draw2'].forEach(v=>{
+      deck.push({id:'c'+(id++), color, value:v});
+      deck.push({id:'c'+(id++), color, value:v});
+    });
+  });
+  for(let i=0;i<4;i++) deck.push({id:'c'+(id++), color:'wild', value:'wild'});
+  for(let i=0;i<4;i++) deck.push({id:'c'+(id++), color:'wild', value:'wild4'});
+  return shuffle(deck);
+}
+function shuffle(arr){
+  const a = arr.slice();
+  for(let i=a.length-1;i>0;i--){
+    const j = Math.floor(Math.random()*(i+1));
+    [a[i],a[j]] = [a[j],a[i]];
+  }
+  return a;
+}
+
+document.getElementById('btn-start-game').onclick = async ()=>{
+  if(!isHost) return;
+  const room = localRoomState;
+  const order = room.order;
+  const startingCards = room.startingCards;
+
+  let deck = buildDeck();
+  const hands = {};
+  order.forEach(pid=> hands[pid] = []);
+  for(let round=0; round<startingCards; round++){
+    order.forEach(pid=>{ hands[pid].push(deck.pop()); });
+  }
+  // first discard card — must not be wild4 (reshuffle if so), can be action card (apply basic effect skip for simplicity? keep official: just flip, if wild choose random color)
+  let first = deck.pop();
+  while(first.value==='wild4'){ deck.unshift(first); deck = shuffle(deck); first = deck.pop(); }
+  let currentColor = first.color==='wild' ? COLORS[Math.floor(Math.random()*4)] : first.color;
+
+  // write private hands
+  const updates = {};
+  order.forEach(pid=>{ updates[`hands/${currentRoomCode}/${pid}`] = hands[pid]; });
+  await db.ref().update(updates);
+
+  await db.ref(`deck/${currentRoomCode}`).set(deck);
+
+  await db.ref(`rooms/${currentRoomCode}`).update({
+    status:'playing',
+    order,
+    currentTurnIndex:0,
+    direction:1,
+    currentColor,
+    discardTop: first,
+    discardCount:1,
+    drawCount: deck.length,
+    unoCalled: {},
+    winner: null,
+    lastAction: { type:'gameStart', at: Date.now() }
+  });
+
+  showToast('Game started!');
+};
+
+/* --- Host listens for player action requests --- */
+function attachHostActionListener(){
+  if(!isHost) return;
+  if(actionsListener) actionsRef.off('child_added', actionsListener);
+  actionsRef = db.ref(`actions/${currentRoomCode}`);
+  actionsListener = actionsRef.on('child_added', snap=>{
+    const action = snap.val();
+    const key = snap.key;
+    processAction(action).finally(()=> actionsRef.child(key).remove());
+  });
+}
+
+async function processAction(action){
+  const room = (await db.ref(`rooms/${currentRoomCode}`).once('value')).val();
+  if(!room || room.status!=='playing') return;
+  const order = room.order;
+  const curUid = order[room.currentTurnIndex];
+
+  if(action.type==='playCard'){
+    if(action.uid !== curUid) return; // not your turn
+    const handSnap = await db.ref(`hands/${currentRoomCode}/${action.uid}`).once('value');
+    let hand = handSnap.val() || [];
+    const idx = hand.findIndex(c=>c.id===action.cardId);
+    if(idx===-1) return;
+    const card = hand[idx];
+    if(!isCardPlayable(card, room.currentColor, room.discardTop)) return;
+
+    hand.splice(idx,1);
+    await db.ref(`hands/${currentRoomCode}/${action.uid}`).set(hand);
+
+    let newColor = card.color==='wild' ? (action.chosenColor||'red') : card.color;
+    let direction = room.direction;
+    let turnIndex = room.currentTurnIndex;
+    let extraDrawUid = null, extraDrawCount = 0;
+    let skipNext = false;
+
+    if(card.value==='reverse'){ direction *= -1; if(order.length===2) skipNext=true; }
+    if(card.value==='skip'){ skipNext = true; }
+    if(card.value==='draw2'){ extraDrawUid = order[nextIndex(turnIndex,direction,order.length)]; extraDrawCount = 2; skipNext = true; }
+    if(card.value==='wild4'){ extraDrawUid = order[nextIndex(turnIndex,direction,order.length)]; extraDrawCount = 4; skipNext = true; }
+
+    // check winner
+    if(hand.length===0){
+      await finishGame(action.uid);
+      return;
+    }
+
+    // uno flag reset/track
+    const unoCalled = room.unoCalled || {};
+    if(hand.length===1){ unoCalled[action.uid]=false; } else { delete unoCalled[action.uid]; }
+
+    let deck = (await db.ref(`deck/${currentRoomCode}`).once('value')).val() || [];
+    if(extraDrawUid && extraDrawCount>0){
+      const targetHandSnap = await db.ref(`hands/${currentRoomCode}/${extraDrawUid}`).once('value');
+      let targetHand = targetHandSnap.val() || [];
+      for(let i=0;i<extraDrawCount;i++){
+        if(deck.length===0) deck = reshuffleFromDiscard(card);
+        targetHand.push(deck.pop());
+      }
+      await db.ref(`hands/${currentRoomCode}/${extraDrawUid}`).set(targetHand);
+      await db.ref(`deck/${currentRoomCode}`).set(deck);
+    }
+
+    let nextTurn = nextIndex(turnIndex, direction, order.length);
+    if(skipNext) nextTurn = nextIndex(nextTurn, direction, order.length);
+
+    await db.ref(`rooms/${currentRoomCode}`).update({
+      currentColor:newColor,
+      discardTop: card,
+      discardCount: (room.discardCount||0)+1,
+      direction,
+      currentTurnIndex: nextTurn,
+      drawCount: deck.length,
+      unoCalled,
+      lastAction: { type:'playCard', uid:action.uid, card, at: Date.now() }
+    });
+  }
+
+  else if(action.type==='drawCard'){
+    if(action.uid !== curUid) return;
+    let deck = (await db.ref(`deck/${currentRoomCode}`).once('value')).val() || [];
+    if(deck.length===0) deck = reshuffleFromDiscard(room.discardTop);
+    const handSnap = await db.ref(`hands/${currentRoomCode}/${action.uid}`).once('value');
+    let hand = handSnap.val() || [];
+    const drawn = deck.pop();
+    hand.push(drawn);
+    await db.ref(`hands/${currentRoomCode}/${action.uid}`).set(hand);
+    await db.ref(`deck/${currentRoomCode}`).set(deck);
+    await db.ref(`rooms/${currentRoomCode}/drawCount`).set(deck.length);
+    await db.ref(`rooms/${currentRoomCode}/lastAction`).set({ type:'drawCard', uid:action.uid, at: Date.now() });
+    // rule: drawUntilPlayable — if enabled and drawn card is playable, don't auto pass; else if not enabled, player may pass manually.
+  }
+
+  else if(action.type==='passTurn'){
+    if(action.uid !== curUid) return;
+    const nextTurn = nextIndex(room.currentTurnIndex, room.direction, order.length);
+    await db.ref(`rooms/${currentRoomCode}`).update({
+      currentTurnIndex: nextTurn,
+      lastAction: { type:'passTurn', uid:action.uid, at: Date.now() }
+    });
+  }
+
+  else if(action.type==='catchUno'){
+    const targetUid = action.targetUid;
+    const unoCalled = room.unoCalled || {};
+    const targetHandSnap = await db.ref(`hands/${currentRoomCode}/${targetUid}`).once('value');
+    let targetHand = targetHandSnap.val() || [];
+    if(targetHand.length===1 && !unoCalled[targetUid]){
+      let deck = (await db.ref(`deck/${currentRoomCode}`).once('value')).val() || [];
+      for(let i=0;i<2;i++){
+        if(deck.length===0) deck = reshuffleFromDiscard(room.discardTop);
+        targetHand.push(deck.pop());
+      }
+      await db.ref(`hands/${currentRoomCode}/${targetUid}`).set(targetHand);
+      await db.ref(`deck/${currentRoomCode}`).set(deck);
+      unoCalled[targetUid] = true;
+      await db.ref(`rooms/${currentRoomCode}/unoCalled`).set(unoCalled);
+      await db.ref(`rooms/${currentRoomCode}/lastAction`).set({ type:'unoCaught', uid:action.uid, targetUid, at: Date.now() });
+    }
+  }
+
+  else if(action.type==='callUnoSelf'){
+    const unoCalled = room.unoCalled || {};
+    unoCalled[action.uid] = true;
+    await db.ref(`rooms/${currentRoomCode}/unoCalled`).set(unoCalled);
+  }
+}
+
+function nextIndex(cur, dir, len){ return (cur + dir + len) % len; }
+
+function reshuffleFromDiscard(keepTop){
+  // Only used if draw pile empties (edge case) — shuffles a fresh partial deck.
+  // Simplified: build a small fresh set of number cards to keep game going.
+  return shuffle(buildDeck()).slice(0, 20);
+}
+
+function isCardPlayable(card, currentColor, discardTop){
+  if(card.color==='wild') return true;
+  if(card.color===currentColor) return true;
+  if(discardTop && card.value===discardTop.value) return true;
+  return false;
+}
+
+async function finishGame(winnerUid){
+  const room = (await db.ref(`rooms/${currentRoomCode}`).once('value')).val();
+  const order = room.order;
+  await db.ref(`rooms/${currentRoomCode}`).update({ status:'finished', winner:winnerUid });
+  // update stats
+  const updates = {};
+  order.forEach(pid=>{
+    updates[`users/${pid}/matchesPlayed`] = firebase.database.ServerValue.increment(1);
+    if(pid===winnerUid){
+      updates[`users/${pid}/wins`] = firebase.database.ServerValue.increment(1);
+      updates[`users/${pid}/coins`] = firebase.database.ServerValue.increment(50);
+      updates[`users/${pid}/xp`] = firebase.database.ServerValue.increment(100);
+    } else {
+      updates[`users/${pid}/xp`] = firebase.database.ServerValue.increment(20);
+    }
+  });
+  await db.ref().update(updates);
+}
+
+/* ---------------------------------------------------------------------
+   PLAYER-SIDE: send actions
+--------------------------------------------------------------------- */
+function sendAction(type, payload={}){
+  return db.ref(`actions/${currentRoomCode}`).push({ type, uid, ...payload, at: Date.now() });
+}
+
+/* ---------------------------------------------------------------------
+   GAME UI RENDERING (all clients)
+--------------------------------------------------------------------- */
+function renderGameState(room){
+  if(isHost) attachHostActionListener();
+  attachMyHandListener();
+
+  document.getElementById('game-room-code').textContent = currentRoomCode;
+  const order = room.order;
+  const players = room.players;
+  const curUid = order[room.currentTurnIndex];
+  const myTurn = curUid === uid;
+
+  // turn banner
+  const banner = document.getElementById('turn-banner');
+  banner.textContent = myTurn ? "Your turn!" : `${players[curUid]?.name || '...'}'s turn`;
+  banner.classList.toggle('me', myTurn);
+
+  document.getElementById('direction-indicator').textContent = room.direction===1 ? '➜ ➜ ➜' : '⟵ ⟵ ⟵';
+  document.getElementById('draw-pile-count').textContent = (room.drawCount||0)+' left';
+
+  // discard pile
+  const discardEl = document.getElementById('discard-pile-visual');
+  discardEl.innerHTML='';
+  if(room.discardTop) discardEl.appendChild(renderCardEl(room.discardTop, false));
+  document.getElementById('current-color-dot').style.background = colorHex(room.currentColor);
+
+  // opponents strip
+  const strip = document.getElementById('opponents-strip');
+  strip.innerHTML='';
+  order.filter(pid=>pid!==uid).forEach(async pid=>{
+    const p = players[pid];
+    const handLen = await getHandLength(pid);
+    const opp = document.createElement('div');
+    opp.className = 'opp-card' + (pid===curUid ? ' turn':'');
+    opp.innerHTML = `
+      <div class="avatar" style="background:${avatarColorFor(pid)};width:34px;height:34px;font-size:.85rem;">${initials(p?.name)}</div>
+      <div class="discname">${escapeHtml(p?.name||'')}</div>
+      <div class="cnt">${handLen}🂠</div>
+    `;
+    strip.appendChild(opp);
+  });
+
+  // draw/pass buttons
+  document.getElementById('btn-draw-card').classList.toggle('hidden', !myTurn || hasDrawnThisTurn);
+  document.getElementById('btn-pass-turn').classList.toggle('hidden', !(myTurn && hasDrawnThisTurn));
+  document.getElementById('pending-draw-note').classList.toggle('hidden', !(myTurn && hasDrawnThisTurn));
+
+  // uno button
+  const myCount = localHand.length;
+  const unoCalled = room.unoCalled || {};
+  const unoBtn = document.getElementById('btn-call-uno');
+  if(myCount===1 && !unoCalled[uid]){
+    unoBtn.classList.remove('hidden'); unoBtn.classList.add('urgent');
+  } else {
+    unoBtn.classList.add('hidden'); unoBtn.classList.remove('urgent');
+  }
+
+  // catch button — show if any opponent has 1 card and hasn't called
+  const catchBtn = document.getElementById('btn-catch-uno');
+  window._catchTarget = null;
+  for(const pid of order){
+    if(pid===uid) continue;
+    // we don't know opponents' hand length synchronously here; approximate using cache
+  }
+  checkCatchable(room);
+}
+
+async function checkCatchable(room){
+  const order = room.order;
+  const unoCalled = room.unoCalled || {};
+  const catchBtn = document.getElementById('btn-catch-uno');
+  for(const pid of order){
+    if(pid===uid) continue;
+    const len = await getHandLength(pid);
+    if(len===1 && !unoCalled[pid]){
+      catchBtn.classList.remove('hidden');
+      window._catchTarget = pid;
+      return;
+    }
+  }
+  catchBtn.classList.add('hidden');
+  window._catchTarget = null;
+}
+
+const handLenCache = {};
+function getHandLength(pid){
+  return db.ref(`hands/${currentRoomCode}/${pid}`).once('value').then(s=>{
+    const h = s.val()||[];
+    handLenCache[pid] = h.length;
+    return h.length;
+  });
+}
+
+function attachMyHandListener(){
+  if(myHandListener) myHandRef.off('value', myHandListener);
+  myHandRef = db.ref(`hands/${currentRoomCode}/${uid}`);
+  myHandListener = myHandRef.on('value', snap=>{
+    localHand = snap.val() || [];
+    hasDrawnThisTurn = false; // reset flag on hand change baseline; refined below
+    renderHand();
+  });
+}
+
+function renderHand(){
+  const scroll = document.getElementById('hand-scroll');
+  scroll.innerHTML='';
+  const room = localRoomState;
+  if(!room) return;
+  const order = room.order;
+  const myTurn = order[room.currentTurnIndex]===uid;
+  localHand.forEach(card=>{
+    const playable = myTurn && isCardPlayable(card, room.currentColor, room.discardTop);
+    const el = renderCardEl(card, true);
+    el.classList.add(playable ? 'playable':'unplayable');
+    el.onclick = ()=>{ if(playable) attemptPlay(card); };
+    scroll.appendChild(el);
+  });
+}
+
+function renderCardEl(card, small){
+  const el = document.createElement('div');
+  el.className = (small?'hand-card':'uno-card') + ' c-' + card.color;
+  if(card.value==='wild'){ el.classList.remove('c-wild'); el.classList.add('c-wild'); el.innerHTML='<div class="uno-oval">WILD</div>'; }
+  else if(card.value==='wild4'){ el.classList.add('c-wild'); el.innerHTML='<div class="uno-oval">+4</div>'; }
+  else if(card.value==='skip'){ el.innerHTML='🚫'; }
+  else if(card.value==='reverse'){ el.innerHTML='🔁'; }
+  else if(card.value==='draw2'){ el.innerHTML='+2'; }
+  else { el.innerHTML = card.value; }
+  return el;
+}
+
+function colorHex(c){
+  return {red:'#E5473A',yellow:'#F4C430',green:'#3CA35A',blue:'#2E7DD1',wild:'#888'}[c] || '#888';
+}
+
+function attemptPlay(card){
+  if(card.color==='wild'){
+    pendingWildCardId = card.id;
+    document.getElementById('color-picker-overlay').classList.remove('hidden');
+    return;
+  }
+  sendAction('playCard', { cardId: card.id });
+}
+
+document.querySelectorAll('.color-swatch').forEach(sw=>{
+  sw.onclick = ()=>{
+    document.getElementById('color-picker-overlay').classList.add('hidden');
+    if(pendingWildCardId){
+      sendAction('playCard', { cardId: pendingWildCardId, chosenColor: sw.dataset.color });
+      pendingWildCardId = null;
+    }
+  };
+});
+
+document.getElementById('btn-draw-card').onclick = ()=>{
+  hasDrawnThisTurn = true;
+  sendAction('drawCard');
+  renderGameState(localRoomState);
+};
+document.getElementById('btn-pass-turn').onclick = ()=>{
+  hasDrawnThisTurn = false;
+  sendAction('passTurn');
+};
+document.getElementById('btn-call-uno').onclick = ()=>{
+  sendAction('callUnoSelf');
+  playSound('uno');
+};
+document.getElementById('btn-catch-uno').onclick = ()=>{
+  if(window._catchTarget) sendAction('catchUno', { targetUid: window._catchTarget });
+};
+document.getElementById('btn-game-leave').onclick = async ()=>{
+  await leaveRoom();
+  showScreen('screen-landing');
+};
+
+/* ---------------------------------------------------------------------
+   WINNER OVERLAY + CONFETTI
+--------------------------------------------------------------------- */
+let winnerShown = false;
+function showWinner(room){
+  if(winnerShown) return;
+  winnerShown = true;
+  const name = room.players[room.winner]?.name || 'Someone';
+  document.getElementById('winner-name').textContent = `${name} wins the round! 🏆`;
+  document.getElementById('winner-overlay').classList.remove('hidden');
+  spawnConfetti();
+  playSound('victory');
+}
+document.getElementById('btn-winner-close').onclick = async ()=>{
+  winnerShown = false;
+  document.getElementById('winner-overlay').classList.add('hidden');
+  if(isHost){
+    await db.ref(`rooms/${currentRoomCode}`).update({ status:'lobby', winner:null });
+    await db.ref(`rooms/${currentRoomCode}/players`).transaction(players=>{
+      if(!players) return players;
+      Object.keys(players).forEach(pid=> players[pid].ready=false);
+      return players;
+    });
+  }
+};
+function spawnConfetti(){
+  const colors=['#E5473A','#F4C430','#3CA35A','#2E7DD1','#D4AF37'];
+  for(let i=0;i<60;i++){
+    const p = document.createElement('div');
+    p.className='confetti-piece';
+    p.style.left = Math.random()*100+'vw';
+    p.style.background = colors[Math.floor(Math.random()*colors.length)];
+    p.style.transform = `rotate(${Math.random()*360}deg)`;
+    document.body.appendChild(p);
+    const duration = 2500 + Math.random()*1500;
+    p.animate([
+      { transform:`translateY(0) rotate(0deg)`, opacity:1 },
+      { transform:`translateY(100vh) rotate(${360+Math.random()*360}deg)`, opacity:0.8 }
+    ], { duration, easing:'ease-in' });
+    setTimeout(()=>p.remove(), duration);
+  }
+}
+
+/* ---------------------------------------------------------------------
+   CHAT
+--------------------------------------------------------------------- */
+document.getElementById('btn-toggle-chat').onclick = ()=> document.getElementById('chat-panel').classList.remove('hidden');
+document.getElementById('btn-close-chat').onclick = ()=> document.getElementById('chat-panel').classList.add('hidden');
+
+function listenChat(code){
+  if(chatListener) chatRef.off('child_added', chatListener);
+  chatRef = db.ref(`chat/${code}`).limitToLast(50);
+  document.getElementById('chat-msgs').innerHTML='';
+  chatListener = chatRef.on('child_added', snap=>{
+    const m = snap.val();
+    const el = document.createElement('div');
+    el.className='chat-msg';
+    el.innerHTML = `<b>${escapeHtml(m.name)}:</b> ${escapeHtml(m.text)}`;
+    document.getElementById('chat-msgs').appendChild(el);
+    document.getElementById('chat-msgs').scrollTop = 999999;
+  });
+}
+let lastChatAt = 0;
+function sendChat(text){
+  text = text.trim();
+  if(!text) return;
+  const now = Date.now();
+  if(now - lastChatAt < 800) return; // basic anti-spam throttle
+  lastChatAt = now;
+  db.ref(`chat/${currentRoomCode}`).push({ uid, name: username, text: text.slice(0,120), at: now });
+}
+document.getElementById('btn-send-chat').onclick = ()=>{
+  const input = document.getElementById('chat-input');
+  sendChat(input.value); input.value='';
+};
+document.getElementById('chat-input').addEventListener('keydown', e=>{
+  if(e.key==='Enter'){ sendChat(e.target.value); e.target.value=''; }
+});
+document.querySelectorAll('.emoji-row button').forEach(b=>{
+  b.onclick = ()=> sendChat(b.dataset.emoji);
+});
+
+/* ---------------------------------------------------------------------
+   PWA — service worker registration
+--------------------------------------------------------------------- */
+if('serviceWorker' in navigator){
+  window.addEventListener('load', ()=>{
+    navigator.serviceWorker.register('service-worker.js').catch(()=>{});
+  });
+}
+
+/* ---------------------------------------------------------------------
+   RECONNECT — if the user already has a room code saved, try rejoin
+--------------------------------------------------------------------- */
+window.addEventListener('beforeunload', ()=>{
+  // onDisconnect handlers registered in enterRoom() cover most cases.
+});
+</script>
+</body>
+</html>
